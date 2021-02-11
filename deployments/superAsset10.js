@@ -17,6 +17,7 @@ const {
   buildContractClass,
   getPreimage,
   toHex,
+  SigHashPreimage,
   Bytes,
   signTx,
   PubKey,
@@ -48,11 +49,11 @@ const sleeper = async(seconds) => {
 
 // Generate your own private keys (Ex: https://console.matterpool.io/tools)
 // And fund the addresses for them.
-const privateKey1= new bsv.PrivateKey('yourwifkey1');
+const privateKey1 = new bsv.PrivateKey('wifhere');
 const publicKey1 = bsv.PublicKey.fromPrivateKey(privateKey1)
 console.log('privateKey1', privateKey1, publicKey1, publicKey1.toAddress().toString());
 
-const privateKey2 = new bsv.PrivateKey('yourwifkey2')
+const privateKey2 = new bsv.PrivateKey('wifhere')
 const publicKey2 = bsv.PublicKey.fromPrivateKey(privateKey2)
 console.log('privateKey2', privateKey2, publicKey2, publicKey2.toAddress().toString());
 
@@ -72,7 +73,7 @@ try {
   // -----------------------------------------------------
   // Step 1: Deploy NFT with initial owner and satoshis value of 2650 (Lower than this may hit dust limit)
   let assetId = null;
-  const nftSatoshiValue = 2650;
+  const nftSatoshiValue = 4000;
   const FEE = 3000;
   const lockingTx = await createLockingTx(privateKey1.toAddress(), nftSatoshiValue, FEE)
   const initialState =  ' OP_RETURN ' + '000000000000000000000000000000000000000000000000000000000000000000000000 ' + toHex(publicKey1);
@@ -89,6 +90,7 @@ try {
   {
     const prevLockingScript = initialLockingScript;
     console.log('Preparing first transfer update...');
+    await sleeper(5);
     assetId = Buffer.from(lockingTxid, 'hex').reverse().toString('hex') + '00000000'; // 0th output. Use full outpoint for identifier
     const pushDataPayload = Buffer.from(`{ "hello": "world" }`, 'utf8').toString('hex');
     const newState = ' ' + assetId + ' ' + toHex(publicKey1) + ' ' + pushDataPayload;
@@ -125,10 +127,11 @@ try {
     // console.log('preimagehex', preimage.toJSON(), 'preimagejson', preimage.toString(), 'signature', toHex(sig));
     const pkh = bsv.crypto.Hash.sha256ripemd160(publicKey2.toBuffer())
     const changeAddress = toHex(pkh) // Needs to be unprefixed address
+    console.log('pubkey', publicKey1.toString(), 'changeaddress', changeAddress);
     const unlockingScript = token.transfer(
       new Sig(toHex(sig)),
       new PubKey(toHex(publicKey1)),
-      preimage,
+      new SigHashPreimage(toHex(preimage)),
       new Ripemd160(changeAddress),
       changeSatoshis,
       new Bytes(pushDataPayload)

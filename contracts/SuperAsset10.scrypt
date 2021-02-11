@@ -73,7 +73,7 @@ import "util.scrypt";
 //
 // Behold, the Smart Contract...
 //
-contract SimpleAsset10 {
+contract SuperAsset10 {
     //
 	// Transfer and Update the Simple Asset
     // Minting is implicit after the first transfer when starting from after deploying this contract with
@@ -90,25 +90,27 @@ contract SimpleAsset10 {
         // Todo: Use Tx.checkPreimageOpt. Bug exists that prevents it from operating currently.
         // Update after alpha phase over.
         require(Util.checkPreimageSigHashType(txPreimage, SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID));
-        // Get the locking script of THIS input.
         bytes lockingScript = Util.scriptCode(txPreimage);
         // We know the static part of this contract is exactly 3237 in length (we pre-compiled and then replaced this constant).
         // Make sure to add 2 bytes to skip the push data for the assetID (36 bytes of the outpoint in little-endian)
-        bytes dataState = lockingScript[ 3230: ];
+        bytes dataState = lockingScript[ 3630: ];
         bytes assetId = dataState[ : 36 ]; // Note that the assetId is in little endian to make it easier to match by outpoint
         // Validate and authorize the transaction (public key is 33 bytes)
+        bytes pkey = dataState[ 37 : 70];
+        PubKey i = PubKey(pkey);
         require(checkSig(senderSig, PubKey(dataState[ 37 : 70])));
         // Was this a minting (ie: first) transfer?
         if (assetId == num2bin(0, 36)) {
             // Then the assetId must be equal to the outpoint that this input is spending.
             assetId = Util.outpoint(txPreimage);
         }
+
         // Use the constant code size of 3228 to pass along the assetId, receiver, and payload data (following all minimal push encoding rules)
         // Make change from the other inputs that must exist to fund this transaction
         // Hardcode the length of the assetId (0x24 = 36 bytes) and the public key (0x21 = 33 bytes).
         require(
             hash256(
-                Util.buildOutput(lockingScript[ : 3228] + b'6a24' + assetId + b'21' +
+                Util.buildOutput(lockingScript[ : 3628] + b'6a24' + assetId + b'21' +
 					receiver + Util.writeVarMinimalPushdata(payload), Util.value(txPreimage)) +
                 Util.buildOutput(Util.buildPublicKeyHashScript(changeAddress), changeSatoshis))
                 ==
@@ -130,7 +132,7 @@ contract SimpleAsset10 {
         // Upon the first transfer the locking
         bytes lockingScript = Util.scriptCode(txPreimage);
         // Validate and authorize the transaction
-        require(checkSig(ownerSig, PubKey( (lockingScript[ 3230: ])[ 37 : 70])));
+        require(checkSig(ownerSig, PubKey( (lockingScript[ 3630: ])[ 37 : 70])));
         require(hash256(
             Util.buildOutput(Util.buildPublicKeyHashScript(receiverAddress), Util.value(txPreimage)) +
             Util.buildOutput(Util.buildPublicKeyHashScript(changeAddress), changeSatoshis))

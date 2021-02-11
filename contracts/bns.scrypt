@@ -1,0 +1,94 @@
+import "util.scrypt";
+ 
+contract BNS {
+    // Note: In order to save space, we must pre-compile the smart contract, then obtain the length and copy it into `CODE_LEN`
+    static const int CODE_LEN = 2034;   // This is the length of the smart contract upto and including the `6a24`
+    static const bytes OUT_LEN = b'fdf307'; // CODE_LEN + 1 = 1148 = fd with 7c04 in lE
+    static const bytes OUT_NFT_HASH = b'8d1dfa561f903998aa532db7acbe9b537b81f01eceba7246758fc3281dbb3282';
+    static const bytes OUT_NFT_MINT_LEN = b'fd4309'; // VarInt length of the NFT to mint in the first output CLAIM
+    static const bytes RELEASE_HASH160 = b'131135fb156fa4414714dbcf4cf9ac39a3f0e4a0';
+    // Address: 1Fxf9d4M5uQTEK1ZNm8sGzx2gXotQWDeH6
+    // Ripemd: a4187bd7b8a126716eeb9586eeb1261d5861d24c
+    // Private key Wif: L3GDddYttRiqqRddsWoZHbYQgFF49VDgkm3wmGo1Ds7HqNzNE2QM
+    // Public Key: 02b58b9cdf8c9e86c78d27fbce337867d72aa08488eaaf889026b5913d8e9aef21
+    static const bytes knownAddress = b'a4187bd7b8a126716eeb9586eeb1261d5861d24c';  // This is the length of the smart contract's first output that has the assetId, and  receiver address.
+    
+    public function extend(SigHashPreimage txPreimage, bytes nftClaimOutputScript, int claimSatoshis, bytes claimRipemd160, int dividedSatoshis, Ripemd160 changeAddress, int changeSatoshis) {
+        // Require that the NFT for the CLAIM output match this hash
+        // This is done so that this contract will be smaller, and each of the N outputs do not need to duplicate the NFT code 
+        require(hash256(nftClaimOutputScript) == BNS.OUT_NFT_HASH);
+        // Allow anyone to fund this operation, commit to all the outputs.
+        // Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
+        require(Util.checkPreimageSigHashType(txPreimage, SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID));
+        // require(Tx.checkPreimageOpt_(txPreimage));
+        bytes lockingScript = Util.scriptCode(txPreimage); // Todo optimize by hardcoding the slice
+        // First output is the CLAIM UTXO (can be claimed to own this name prefix)
+        // Note: It is important that the NFT's melt function requires a miner fee greater than the amount of Satoshis locked into it
+        // This will prevent attackers from merely claiming all CLAIM's and then melting them down for profit.
+        // Hardcode the length of the output varInt to save space
+        bytes buildingOutputs = num2bin(claimSatoshis, Util.OutputValueLen) + BNS.OUT_NFT_MINT_LEN + nftClaimOutputScript;
+        
+        // Only claim this prefix if an address is provided
+        if (claimRipemd160) {
+            buildingOutputs += Ripemd160(claimRipemd160);
+        } else {
+            buildingOutputs += knownAddress;
+        }
+        // Output 40 outputs, one for each letter: a-z 0-9 with underscore _ and period .
+        bytes bnsOutputScriptBase = BNS.OUT_LEN + lockingScript[ : BNS.CODE_LEN - 2] + b'6a01';
+        int individualOutSatoshis = dividedSatoshis / 2; // Divide by total number of outputs 
+      
+        buildingOutputs +=  
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'5f' + // _
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'2e';// + // .
+        // num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'30';// + // 0
+        /*num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'31' + // 1
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'32' + // 2 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'33' + // 3 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'34' + // 4 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'35' + // 5 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'36' + // 6 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'37' + // 7 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'38' + // 8 
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'39' + // 9
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'61' + // a
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'62' + // b
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'63' + // c
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'64' + // d
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'65' + // e
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'66' + // f
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'67' + // g
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'68' + // h
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'69' + // i
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'6a' + // j
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'6b' + // k
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'6c' + // l
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'6d' + // m
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'6e' + // n
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'6f' + // o
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'70' + // p
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'71' + // q
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'72' + // r
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'73' + // s
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'74' + // t
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'75' + // u
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'76' + // v
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'77' + // w
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'78' + // x
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'79' + // y
+        num2bin(individualOutSatoshis, Util.OutputValueLen) + bnsOutputScriptBase + b'7a';  // z*/
+        buildingOutputs += (num2bin(changeSatoshis, Util.OutputValueLen) + b'1976a914' + changeAddress + b'88ac');
+        // bytes d = hash256(buildingOutputs);
+        // bytes h = Util.hashOutputs(txPreimage);
+        require(hash256(buildingOutputs) == Util.hashOutputs(txPreimage));
+    }
+
+    public function release(Sig ownerSig, PubKey unlockKey, SigHashPreimage txPreimage) {
+        // Allow anyone to fund this operation, commit to all the outputs.
+        // Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
+        require(Util.checkPreimageSigHashType(txPreimage, SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID));
+        require(hash160(unlockKey) == BNS.RELEASE_HASH160);
+        require(checkSig(ownerSig, unlockKey));  
+        require(hash256(b'000000000000000002006a') == Util.hashOutputs(txPreimage));
+    }
+}

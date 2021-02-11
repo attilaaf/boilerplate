@@ -26,7 +26,7 @@ describe('Test sCrypt contract OptimalPushTx In Javascript', () => {
         const Test = buildContractClass(compileContract('optimalPushtx.scrypt'))
         test = new Test();
         
-        // // use this if sigHashType needs to be customized, using Tx.checkPreimageOpt_(txPreimage)
+        // use this if sigHashType needs to be customized, using Tx.checkPreimageOpt_(txPreimage)
         // const asmVars = {'Tx.checkPreimageOpt_.sigHashType': sighashType2Hex(sighashType)}
         // test.replaceAsmVars(asmVars)
 

@@ -1,0 +1,69 @@
+import "util.scrypt";
+ 
+contract SuperAssetNFT {
+    // Note: In order to save space, we must pre-compile the smart contract, then obtain the length and copy it into `CODE_LEN`
+    static const int CODE_LEN = 1251;   // This is the length of the smart contract upto and including the `6a24` of the locking script
+  
+    public function transfer(Sig senderSig, PubKey unlockKey, Ripemd160 receiverAddress, SigHashPreimage txPreimage, bool isMelt, bytes payload, Ripemd160 changeAddress, int changeSatoshis) {
+        // Allow anyone to fund this operation, commit to all the outputs.
+        // Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
+        // require(Tx.checkPreimageOpt_(txPreimage)); // DOES NOT WORK!
+        require(Util.checkPreimageSigHashType(txPreimage, SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID));
+        // Optimization: Grab the locking script directly instead of using Util.scriptCode
+        bytes preimageSection = txPreimage[ 104 : ];
+        bytes lockingScript = preimageSection[ 3 : 3 + Util.fromLEUnsigned(preimageSection[ 1 : 3 ])];
+        bytes dataState = lockingScript[ SuperAssetNFT.CODE_LEN : ];
+        bytes assetId = dataState[ : 36 ];
+        // Validate and authorize the transaction, obtain the hash160 bytes from the locking script and compare against the hash160 of the unlockKey
+        require(hash160(unlockKey) == dataState[ 37 : 57 ]);
+        require(checkSig(senderSig, unlockKey));  
+        // Whether this asset is being melted back into P2PKH bitcoin or instead it is a transfer update.
+        bytes buildingOutput = b'';
+        bytes inputValue = Util.valueRaw(txPreimage);
+        if (!isMelt) {
+            // This is a transfer update, enforce the assetId to be set for lifetime.
+            if (assetId == num2bin(0, 36)) {
+                // Then the assetId must be equal to the outpoint that this input is spending.
+                assetId = txPreimage[ 68 : 104 ];
+            }
+            bytes assetOutputBytes = lockingScript[ : SuperAssetNFT.CODE_LEN ] + assetId + b'14' + receiverAddress;
+            // Use b`fd` for varInt because we know that the contract is greater than 255 bytes and less than 65535. Avoids using unnecessary Util.writeVarInt
+            // Optimizations done:
+            // bytes buildingOutput = num2bin(Util.value(txPreimage), Util.OutputValueLen) + Util.writeVarint(assetOutputBytes);
+            // Becomes =>
+            // bytes buildingOutput = num2bin(Util.value(txPreimage), Util.OutputValueLen) + b'fd' + Util.toLEUnsigned(SuperAssetNFT.CODE_LEN + 57, 2) + assetOutputBytes;
+            // Becomes =>
+            // buildingOutput = num2bin(Util.value(txPreimage), Util.OutputValueLen) + b'fdXXXX' + assetOutputBytes;
+            // ... Where the b'fdXXXX' represents the varInt fd + the LE representation of the 2 bytes length of the assetOutputBytes
+            // Example:
+            // This contract length is size SuperAssetNFT.CODE_LEN, and the asset output loccking script is an additional 57 bytes
+            // Therefore SuperAssetNFT.CODE_LEN+57 = b'fd1f05' (fd1f05 in hex is the LE representation of SuperAssetNFT.CODE_LEN+57
+            // How to use:
+            // 1. Make changes to contract
+            // 2. Deploy it
+            // 3. Count the length of the locking script upto and including the `6a24`. Update value of SuperAssetNFT.CODE_LEN to this length.
+            // 4. Add 57
+            // 5. Convert to LE hex representation and add `fd` to the front to get b'fd1f05'
+            buildingOutput = inputValue + b'fd1c05' + assetOutputBytes;
+
+        } else {
+            // The first output, in the case of a melt, is just a p2pkh to recover the satoshis
+            // Manually hardcode p2pkh to save space
+            buildingOutput = (inputValue + b'1976a914' + receiverAddress + b'88ac');
+        }
+        // If there is a payload, then attach the OP_RETURN for transfer or event a melt.
+        if (payload) {
+            // If a payload update is provided, then save it as a second output as OP_RETURN
+            // Note that 'payload' must include the byte length provided by the spender. Avoids using unnecessary Util.writeVarInt
+            // buildingOutput += Util.buildOutput(b'006a' + payload, 0);
+            // Becomes =>  
+            // Todo: restrict this so it must be unspendable output
+            buildingOutput += b'0000000000000000' + Util.writeVarint(b'006a' + payload);
+            // buildingOutput += payloadOutputScript; 
+        }
+        // Add the change output
+        // Manually hardcode p2pkh to save space
+        buildingOutput += (num2bin(changeSatoshis, Util.OutputValueLen) + b'1976a914' + changeAddress + b'88ac');  
+        require(hash256(buildingOutput) == Util.hashOutputs(txPreimage));
+    }
+}

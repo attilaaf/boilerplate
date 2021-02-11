@@ -7,7 +7,9 @@
     "node": ">=12.0.0"
   },
   "scripts": {
-    "test": "mocha -r ts-node/register tests/**/*scrypttest.*  --reporter spec --timeout 600000",
+    "test": "mocha -r ts-node/register tests/**/*.scrypttest.*  --reporter spec --timeout 600000",
+    "test_sft": "mocha -r ts-node/register tests/**/superAssetNFT.scrypttest.*  --reporter spec --timeout 600000",
+    "test_sftopt": "mocha -r ts-node/register tests/**/superAssetNFTOpt.scrypttest.*  --reporter spec --timeout 600000",
     "single-test": "mocha -r ts-node/register --reporter spec --timeout 120000",
     "testnet": "node tests/testnet/demo.js",
     "watch": "node watcher.js",
@@ -31,7 +33,8 @@
     "glob": "^7.1.6",
     "minimist": "^1.2.5",
     "scryptlib": "^0.2.34",
-    "watch": "^1.0.2"
+    "watch": "^1.0.2",
+    "bsv-legacy": "npm:bsv@^1.5.4"
   },
   "devDependencies": {
     "@types/chai": "^4.2.8",

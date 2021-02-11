@@ -1,0 +1,56 @@
+import "util.scrypt";
+ 
+contract SuperAssetNFTMinerDonation {
+    // Note: In order to save space, we must pre-compile the smart contract, then obtain the length and copy it into `CODE_LEN`
+    static const int CODE_LEN = 2314;   // This is the length of the smart contract upto and including the `6a24`
+    // static const int OUTPUT_ASSET_LEN = SuperAssetNFT.CODE_LEN + 57;  // This is the length of the smart contract's first output that has the assetId, and  receiver address.
+    
+    public function transfer(Sig senderSig, PubKey unlockKey, Ripemd160 receiverAddress, SigHashPreimage txPreimage, bytes payloadOutputScript, Ripemd160 changeAddress, int changeSatoshis) {
+        // Allow anyone to fund this operation, commit to all the outputs.
+        // Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
+        require(Util.checkPreimageSigHashType(txPreimage, SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID));
+        // require(Tx.checkPreimageOpt_(txPreimage));
+        // Get the locking script of this input.
+        bytes lockingScript = Util.scriptCode(txPreimage);
+        bytes dataState = lockingScript[ SuperAssetNFTMinerDonation.CODE_LEN : ];
+        bytes assetId = dataState[ : 36 ]; // Note that the assetId is in little endian to make it easier to match by outpoint
+        // Validate and authorize the transaction, obtain the hash160 bytes from the locking script and compare against the hash160 of the unlockKey
+        require(hash160(unlockKey) == dataState[ 37 : 57]);
+        require(checkSig(senderSig, unlockKey));  
+        // Was this a minting (ie: first) transfer?
+        if (assetId == num2bin(0, 36)) {
+            // Then the assetId must be equal to the outpoint that this input is spending.
+            assetId = Util.outpoint(txPreimage);
+        }
+        bytes assetOutputBytes = lockingScript[ : SuperAssetNFTMinerDonation.CODE_LEN - 2] + b'6a24' + assetId + b'14' + receiverAddress;
+        // Use b`fd` for varInt because we know that the contract is greater than 255 bytes and less than 65535. Avoids using unnecessary Util.writeVarInt
+        // Use the following lines to test and estimate the varint size, then replace it to save space
+        // bytes testLen = Util.writeVarint(assetOutputBytes);
+        // bytes buildingOutput = num2bin(Util.value(txPreimage), Util.OutputValueLen) + Util.writeVarint(assetOutputBytes);
+        // bytes buildingOutput = num2bin(Util.value(txPreimage), Util.OutputValueLen) + b'fd' + Util.toLEUnsigned(SuperAssetNFT.CODE_LEN + 57, 2) + assetOutputBytes;
+        // Use fd5a04 which is writeVarInt push of the the LE representation of the CODE_LEN + 57 = 045A => 5a04
+        bytes buildingOutput = num2bin(Util.value(txPreimage), Util.OutputValueLen) + b'fd4309' + assetOutputBytes;
+        if (payloadOutputScript) {
+            // If a payload update is provided, then save it as a second output OP_RETURN
+            // Note that 'payload' must include the byte length provided by the spender. Avoids using unnecessary Util.writeVarInt
+            //buildingOutput += Util.buildOutput(b'006a' + payload, 0);
+            buildingOutput += b'0000000000000000' + payloadOutputScript; //Util.writeVarint(outputScript);
+            // buildingOutput += Util.buildOutput(b'006a' + payload, 0);
+        }
+        buildingOutput += (num2bin(changeSatoshis, Util.OutputValueLen) + b'1976a914' + changeAddress + b'88ac');
+        require(hash256(buildingOutput) == Util.hashOutputs(txPreimage));
+    }
+ 
+    public function melt(Sig ownerSig, PubKey unlockKey, Ripemd160 receiverAddress, SigHashPreimage txPreimage, Ripemd160 changeAddress, int changeSatoshis) {
+        // Allow anyone to fund this operation, commit to all the outputs.
+        // Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
+        require(Util.checkPreimageSigHashType(txPreimage, SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID));
+        // require(Tx.checkPreimageOpt_(txPreimage));
+        // Validate and authorize the transaction, obtain the ripemd160 bytes from the locking script and compare against the hash160 of the unlockKey
+        require(hash160(unlockKey) == PubKey((Util.scriptCode(txPreimage)[ SuperAssetNFTMinerDonation.CODE_LEN : ])[ 37 : 57]));
+        require(checkSig(ownerSig, unlockKey));  
+        // The only output allowed is an empty OP_RETURN with 0 satoshis
+        // This is a donation to miners.
+        require(hash256(b'000000000000000020006a') == Util.hashOutputs(txPreimage));
+    }
+}
